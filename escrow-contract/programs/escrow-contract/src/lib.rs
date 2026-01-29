@@ -66,7 +66,7 @@ pub struct P2PTransfer<'info> {
 
     //token_program
     pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
 
     //maker input account
     #[account(mut, token::mint = token_0_mint, token::authority = maker)]
@@ -86,5 +86,14 @@ pub struct P2PTransfer<'info> {
 }
 
 impl<'info> P2PTransfer<'info> {
-    fn main_transfer() {}
+    fn main_transfer(&self) {
+        //transfer maker
+        self.transfer_to_vault();
+        self.transfer_to_taker();
+        self.transfer_to_maker();
+    }
+
+    fn transfer_to_vault(&self) {}
+    fn transfer_to_taker(&self) {}
+    fn transfer_to_maker(&self) {}
 }
