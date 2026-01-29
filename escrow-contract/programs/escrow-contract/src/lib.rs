@@ -19,7 +19,13 @@ pub mod escrow_contract {
 
 #[account]
 #[derive(InitSpace)]
-pub struct EscrowStateShape {}
+pub struct EscrowStateShape {
+    //token mint
+    pub token_mint: Pubkey,
+    pub vault_address: Pubkey,
+    pub token_amount: Pubkey,
+    pub bump: u8,
+}
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -27,9 +33,12 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
 
+    //token mint
     pub token_mint: InterfaceAccount<'info, Mint>,
 
+    //token_program
     pub token_program: Interface<'info, TokenInterface>,
+    //system_program
     pub system_program: Program<'info, System>,
 
     //init function
@@ -37,5 +46,34 @@ pub struct Initialize<'info> {
     pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
     //init function
+    #[account(init, payer=signer, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account"], bump)]
     pub escrow_state_account: Account<'info, EscrowStateShape>,
+}
+
+#[derive(Accounts)]
+pub struct P2PTransfer<'info> {
+    //maker and taker
+    #[account(mut)]
+    pub maker: Signer<'info>,
+
+    //taker account
+    #[account(mut)]
+    pub taker: Signer<'info>,
+
+    //token mint
+    pub token_mint: InterfaceAccount<'info, Mint>,
+
+    //token_program
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Interface<'info, TokenInterface>,
+
+    //maker input account
+    pub maker_input_account: InterfaceAccount<'info, TokenAccount>,
+    //main output account
+    pub maker_output_account: InterfaceAccount<'info, TokenAccount>,
+
+    //taker input account
+    pub taker_input_account: InterfaceAccount<'info, TokenAccount>,
+    //taker output account
+    pub taker_output_account: InterfaceAccount<'info, TokenAccount>,
 }
