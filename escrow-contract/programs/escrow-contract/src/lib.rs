@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    associated_token::AssociatedToken,
     token::{self, Token},
     token_interface::{self, Burn, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked},
 };
@@ -21,7 +20,8 @@ pub mod escrow_contract {
 #[derive(InitSpace)]
 pub struct EscrowStateShape {
     //token mint
-    pub token_mint: Pubkey,
+    pub token_0_mint: Pubkey,
+    pub token_1_mint: Pubkey,
     pub vault_address: Pubkey,
     pub token_amount: Pubkey,
     pub bump: u8,
@@ -61,19 +61,26 @@ pub struct P2PTransfer<'info> {
     pub taker: Signer<'info>,
 
     //token mint
-    pub token_mint: InterfaceAccount<'info, Mint>,
+    pub token_0_mint: InterfaceAccount<'info, Mint>,
+    pub token_1_mint: InterfaceAccount<'info, Mint>,
 
     //token_program
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Interface<'info, TokenInterface>,
 
     //maker input account
+    #[account(mut, token::mint = token_0_mint, token::authority = maker)]
     pub maker_input_account: InterfaceAccount<'info, TokenAccount>,
-    //main output account
+
+    //maker output account
+    #[account(mut, token::mint = token_1_mint, token::authority = maker)]
     pub maker_output_account: InterfaceAccount<'info, TokenAccount>,
 
-    //taker input account
+    //token input account
+    #[account(mut, token::mint = token_1_mint, token::authority = maker)]
     pub taker_input_account: InterfaceAccount<'info, TokenAccount>,
+
     //taker output account
+    #[account(mut, token::mint = token_1_mint, token::authority = maker)]
     pub taker_output_account: InterfaceAccount<'info, TokenAccount>,
 }
