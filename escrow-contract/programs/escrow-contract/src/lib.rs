@@ -46,7 +46,7 @@ pub struct Initialize<'info> {
     pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
     //init function
-    #[account(init, payer=signer, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account"], bump)]
+    #[account(init, payer=signer, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account", token_mint.key().as_ref()], bump)]
     pub escrow_state_account: Account<'info, EscrowStateShape>,
 }
 
@@ -83,4 +83,8 @@ pub struct P2PTransfer<'info> {
     //taker output account
     #[account(mut, token::mint = token_1_mint, token::authority = maker)]
     pub taker_output_account: InterfaceAccount<'info, TokenAccount>,
+}
+
+impl<'info> P2PTransfer<'info> {
+    fn main_transfer() {}
 }
