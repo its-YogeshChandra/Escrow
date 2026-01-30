@@ -14,6 +14,12 @@ pub mod escrow_contract {
         msg!("Greetings from: {:?}", ctx.program_id);
         Ok(())
     }
+
+    //p2p section
+    pub fn p2pswap(ctx: Context<P2PTransfer>, input_amount: u64, output_amount: u64) -> Result<()> {
+        ctx.accounts.main_transfer(input_amount, output_amount)?;
+        Ok(())
+    }
 }
 
 #[account]
