@@ -27,6 +27,8 @@ pub struct EscrowStateShape {
     pub bump: u8,
 }
 
+//the init function is mainly for the maker (seller)
+//this function let's maker list itself
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     //signer
@@ -50,6 +52,7 @@ pub struct Initialize<'info> {
     pub escrow_state_account: Account<'info, EscrowStateShape>,
 }
 
+//the real transfer function
 #[derive(Accounts)]
 pub struct P2PTransfer<'info> {
     //maker and taker
@@ -61,39 +64,86 @@ pub struct P2PTransfer<'info> {
     pub taker: Signer<'info>,
 
     //token mint
-    pub token_0_mint: InterfaceAccount<'info, Mint>,
-    pub token_1_mint: InterfaceAccount<'info, Mint>,
+    pub input_token_mint: InterfaceAccount<'info, Mint>,
+    pub output_token_mint: InterfaceAccount<'info, Mint>,
 
     //token_program
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 
     //maker input account
-    #[account(mut, token::mint = token_0_mint, token::authority = maker)]
+    #[account(mut, token::mint = input_token_mint, token::authority = maker)]
     pub maker_input_account: InterfaceAccount<'info, TokenAccount>,
 
     //maker output account
-    #[account(mut, token::mint = token_1_mint, token::authority = maker)]
+    #[account(mut, token::mint = output_token_mint, token::authority = maker)]
     pub maker_output_account: InterfaceAccount<'info, TokenAccount>,
 
-    //token input account
-    #[account(mut, token::mint = token_1_mint, token::authority = maker)]
+    //taker input account
+    #[account(mut, token::mint = input_token_mint, token::authority = taker)]
     pub taker_input_account: InterfaceAccount<'info, TokenAccount>,
 
     //taker output account
-    #[account(mut, token::mint = token_1_mint, token::authority = maker)]
+    #[account(mut, token::mint = output_token_mint, token::authority = taker)]
     pub taker_output_account: InterfaceAccount<'info, TokenAccount>,
 }
 
+#[error_code]
+pub enum P2pError {
+    #[msg("insufficient amount to swap")]
+    InsufficientAmount,
+
+    #[msg("incorrect input account")]
+    IncorrectInputAccount,
+
+    #[msg("incorrect output account ")]
+    IncorrectOutputAccount,
+}
+
 impl<'info> P2PTransfer<'info> {
-    fn main_transfer(&self) {
+    fn main_transfer(&self, input_amount: u64, output_amount: u64) -> Result<()> {
         //transfer maker
-        self.transfer_to_vault();
-        self.transfer_to_taker();
-        self.transfer_to_maker();
+        self.checks(input_amount)?;
+        self.transfer_to_maker(input_amount)?;
+        self.transfer_to_taker(output_amount)?;
+        Ok(())
     }
 
-    fn transfer_to_vault(&self) {}
-    fn transfer_to_taker(&self) {}
-    fn transfer_to_maker(&self) {}
+    fn checks(&self, amount: u64) -> Result<()> {
+        //check if the taker have the account
+        if self.taker_output_account.amount < amount {
+            return err!(P2pError::InsufficientAmount);
+        }
+        Ok(())
+    }
+
+    fn transfer_to_taker(&self, amount: u64) -> Result<()> {
+        //transfer token from user account
+        let decimals = self.input_token_mint.decimals;
+        let cpi_accounts = TransferChecked {
+            mint: self.input_token_mint.to_account_info(),
+            from: self.taker_input_account.to_account_info(),
+            to: self.maker_output_account.to_account_info(),
+            authority: self.taker_input_account.to_account_info(),
+        };
+        let cpi_program = self.token_program.to_account_info();
+        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+        token_interface::transfer_checked(cpi_context, amount, decimals)?;
+        Ok(())
+    }
+    fn transfer_to_maker(&self, amount: u64) -> Result<()> {
+        //take the amount from the taker acount to the maker account
+        let decimals = self.input_token_mint.decimals;
+        let cpi_accounts = TransferChecked {
+            mint: self.input_token_mint.to_account_info(),
+            from: self.taker_input_account.to_account_info(),
+            to: self.maker_output_account.to_account_info(),
+            authority: self.taker_input_account.to_account_info(),
+        };
+        let cpi_program = self.token_program.to_account_info();
+        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+        token_interface::transfer_checked(cpi_context, amount, decimals)?;
+
+        Ok(())
+    }
 }
