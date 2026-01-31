@@ -77,6 +77,10 @@ pub struct P2PTransfer<'info> {
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 
+    //escrow state account
+    #[account(mut,  seeds = [b"escrow_state_account", output_token_mint.key().as_ref()], bump)]
+    pub escrow_state_account: Account<'info, EscrowStateShape>,
+
     //maker input account
     #[account(mut, token::mint = input_token_mint, token::authority = maker)]
     pub maker_input_account: InterfaceAccount<'info, TokenAccount>,
@@ -92,6 +96,10 @@ pub struct P2PTransfer<'info> {
     //taker output account
     #[account(mut, token::mint = output_token_mint, token::authority = taker)]
     pub taker_output_account: InterfaceAccount<'info, TokenAccount>,
+
+    //vault token account
+    #[account(mut , token::mint= output_token_mint, token::authority = escrow_state_account)]
+    pub vault_account: InterfaceAccount<'info, TokenAccount>,
 }
 
 #[error_code]
@@ -127,16 +135,28 @@ impl<'info> P2PTransfer<'info> {
         //transfer token from user account
         let decimals = self.input_token_mint.decimals;
         let cpi_accounts = TransferChecked {
-            mint: self.input_token_mint.to_account_info(),
-            from: self.taker_input_account.to_account_info(),
-            to: self.maker_output_account.to_account_info(),
-            authority: self.taker_input_account.to_account_info(),
+            mint: self.output_token_mint.to_account_info(),
+            from: self.vault_account.to_account_info(),
+            to: self.taker_output_account.to_account_info(),
+            authority: self.escrow_state_account.to_account_info(),
         };
+
         let cpi_program = self.token_program.to_account_info();
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+
+        let output_mint = self.input_token_mint.key();
+
+        let seeds = [
+            b"escrow_state_account",
+            output_mint.as_ref(),
+            &[self.escrow_state_account.bump],
+        ];
+
+        let signer_seeds = &[&seeds[..]];
+        let cpi_context = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer_seeds);
         token_interface::transfer_checked(cpi_context, amount, decimals)?;
         Ok(())
     }
+
     fn transfer_to_maker(&self, amount: u64) -> Result<()> {
         //take the amount from the taker acount to the maker account
         let decimals = self.input_token_mint.decimals;
@@ -146,7 +166,9 @@ impl<'info> P2PTransfer<'info> {
             to: self.maker_output_account.to_account_info(),
             authority: self.taker_input_account.to_account_info(),
         };
+
         let cpi_program = self.token_program.to_account_info();
+
         let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
         token_interface::transfer_checked(cpi_context, amount, decimals)?;
 
