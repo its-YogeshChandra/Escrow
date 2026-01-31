@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
-    token::{self, Token},
-    token_interface::{self, Burn, Mint, MintTo, TokenAccount, TokenInterface, TransferChecked},
+    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 declare_id!("8n6tXMhBaJ67C6nmWZ71e5voHnygzxLEHNenxVrrnbnm");
@@ -13,10 +12,11 @@ pub mod escrow_contract {
     pub fn initialize(ctx: Context<Initialize>, amount: u64) -> Result<()> {
         let escrow_state = &mut ctx.accounts.escrow_state_account;
         //update the account
+        escrow_state.maker = ctx.accounts.maker.key();
         escrow_state.token_mint = ctx.accounts.token_mint.key();
         escrow_state.vault_address = ctx.accounts.token_vault.key();
         escrow_state.token_amount = amount;
-        escrow_state.bump = ctx.bumps.token_vault;
+        escrow_state.bump = ctx.bumps.escrow_state_account;
 
         //transfer to vault
         ctx.accounts.main_transfer(amount)?;
@@ -33,6 +33,8 @@ pub mod escrow_contract {
 #[account]
 #[derive(InitSpace)]
 pub struct EscrowStateShape {
+    //maker
+    pub maker: Pubkey,
     //token mint
     pub token_mint: Pubkey,
     pub vault_address: Pubkey,
@@ -57,7 +59,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 
     //init escrow state account function
-    #[account(init, payer=maker, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account", token_mint.key().as_ref()], bump)]
+    #[account(init, payer=maker, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account", maker.key().as_ref(), token_mint.key().as_ref()], bump)]
     pub escrow_state_account: Box<Account<'info, EscrowStateShape>>,
 
     //init token vault
@@ -132,7 +134,7 @@ pub struct P2PTransfer<'info> {
     pub system_program: Program<'info, System>,
 
     //escrow state account
-    #[account(mut,  seeds = [b"escrow_state_account", output_token_mint.key().as_ref()], bump)]
+    #[account(mut, seeds = [b"escrow_state_account", maker.key().as_ref(), output_token_mint.key().as_ref()], bump = escrow_state_account.bump)]
     pub escrow_state_account: Box<Account<'info, EscrowStateShape>>,
 
     //maker input account
@@ -140,7 +142,7 @@ pub struct P2PTransfer<'info> {
     pub maker_input_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     //maker output account
-    #[account(mut, token::mint = output_token_mint, token::authority = maker)]
+    #[account(mut, token::mint = input_token_mint, token::authority = maker)]
     pub maker_output_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     //taker input account
@@ -202,6 +204,7 @@ impl<'info> P2PTransfer<'info> {
 
         let seeds = [
             b"escrow_state_account",
+            self.maker.to_account_info().key.as_ref(),
             output_mint.as_ref(),
             &[self.escrow_state_account.bump],
         ];
