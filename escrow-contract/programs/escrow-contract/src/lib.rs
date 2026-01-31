@@ -56,11 +56,11 @@ pub struct Initialize<'info> {
     //system_program
     pub system_program: Program<'info, System>,
 
-    //init function
+    //init escrow state account function
     #[account(init, payer=maker, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account", token_mint.key().as_ref()], bump)]
     pub escrow_state_account: Box<Account<'info, EscrowStateShape>>,
 
-    //init function
+    //init token vault
     #[account(init,  payer= maker, token::mint = token_mint, token::authority = escrow_state_account, token::token_program = token_program, seeds = [b"token_vault", escrow_state_account.key().as_ref(), token_mint.key().as_ref()], bump )]
     pub token_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
@@ -69,6 +69,7 @@ pub struct Initialize<'info> {
     pub maker_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 }
 
+//init error
 #[error_code]
 pub enum InitErrors {
     #[msg("insufficient balance in the account")]
@@ -76,6 +77,7 @@ pub enum InitErrors {
 }
 
 impl<'info> Initialize<'info> {
+    //the main transfer function
     fn main_transfer(&self, amount: u64) -> Result<()> {
         self.check(amount)?;
         self.transfer_to_vault(amount)?;
@@ -83,6 +85,7 @@ impl<'info> Initialize<'info> {
         Ok(())
     }
 
+    //check function
     fn check(&self, amount: u64) -> Result<()> {
         //check if the maker has the amount to deposit which they intend to do
         if self.maker_token_account.amount < amount {
@@ -153,6 +156,7 @@ pub struct P2PTransfer<'info> {
     pub vault_account: Box<InterfaceAccount<'info, TokenAccount>>,
 }
 
+//error code for the p2p error
 #[error_code]
 pub enum P2pError {
     #[msg("insufficient amount to swap")]
@@ -208,6 +212,7 @@ impl<'info> P2PTransfer<'info> {
         Ok(())
     }
 
+    //fn transfer to maker
     fn transfer_to_maker(&self, amount: u64) -> Result<()> {
         //take the amount from the taker acount to the maker account
         let decimals = self.input_token_mint.decimals;
