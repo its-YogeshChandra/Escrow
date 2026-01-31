@@ -10,8 +10,16 @@ declare_id!("8n6tXMhBaJ67C6nmWZ71e5voHnygzxLEHNenxVrrnbnm");
 pub mod escrow_contract {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
+    pub fn initialize(ctx: Context<Initialize>, amount: u64) -> Result<()> {
+        let escrow_state = &mut ctx.accounts.escrow_state_account;
+        //update the account
+        escrow_state.token_mint = ctx.accounts.token_mint.key();
+        escrow_state.vault_address = ctx.accounts.token_vault.key();
+        escrow_state.token_amount = amount;
+        escrow_state.bump = ctx.bumps.token_vault;
+
+        //transfer to vault
+        ctx.accounts.main_transfer(amount)?;
         Ok(())
     }
 
@@ -26,10 +34,9 @@ pub mod escrow_contract {
 #[derive(InitSpace)]
 pub struct EscrowStateShape {
     //token mint
-    pub token_0_mint: Pubkey,
-    pub token_1_mint: Pubkey,
+    pub token_mint: Pubkey,
     pub vault_address: Pubkey,
-    pub token_amount: Pubkey,
+    pub token_amount: u64,
     pub bump: u8,
 }
 
@@ -39,7 +46,7 @@ pub struct EscrowStateShape {
 pub struct Initialize<'info> {
     //signer
     #[account(mut)]
-    pub signer: Signer<'info>,
+    pub maker: Signer<'info>,
 
     //token mint
     pub token_mint: InterfaceAccount<'info, Mint>,
@@ -50,12 +57,56 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 
     //init function
-    #[account(init,  payer= signer, token::mint = token_mint, token::authority = escrow_state_account, token::token_program = token_program, seeds = [b"token_vault", escrow_state_account.key().as_ref(), token_mint.key().as_ref()], bump )]
-    pub token_vault: InterfaceAccount<'info, TokenAccount>,
+    #[account(init, payer=maker, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account", token_mint.key().as_ref()], bump)]
+    pub escrow_state_account: Box<Account<'info, EscrowStateShape>>,
 
     //init function
-    #[account(init, payer=signer, space = 8+EscrowStateShape::INIT_SPACE, seeds = [b"escrow_state_account", token_mint.key().as_ref()], bump)]
-    pub escrow_state_account: Account<'info, EscrowStateShape>,
+    #[account(init,  payer= maker, token::mint = token_mint, token::authority = escrow_state_account, token::token_program = token_program, seeds = [b"token_vault", escrow_state_account.key().as_ref(), token_mint.key().as_ref()], bump )]
+    pub token_vault: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    //maker token account
+    #[account(mut, token::authority = maker, token::mint = token_mint)]
+    pub maker_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+}
+
+#[error_code]
+pub enum InitErrors {
+    #[msg("insufficient balance in the account")]
+    InsufficientBalance,
+}
+
+impl<'info> Initialize<'info> {
+    fn main_transfer(&self, amount: u64) -> Result<()> {
+        self.check(amount)?;
+        self.transfer_to_vault(amount)?;
+
+        Ok(())
+    }
+
+    fn check(&self, amount: u64) -> Result<()> {
+        //check if the maker has the amount to deposit which they intend to do
+        if self.maker_token_account.amount < amount {
+            return err!(InitErrors::InsufficientBalance)?;
+        }
+
+        Ok(())
+    }
+
+    //transfer token
+    fn transfer_to_vault(&self, amount: u64) -> Result<()> {
+        let decimals = self.token_mint.decimals;
+        let cpi_accounts = TransferChecked {
+            mint: self.token_mint.to_account_info(),
+            from: self.maker_token_account.to_account_info(),
+            to: self.token_vault.to_account_info(),
+            authority: self.maker.to_account_info(),
+        };
+
+        let cpi_program = self.token_program.to_account_info();
+        let cpi_context = CpiContext::new(cpi_program, cpi_accounts);
+        token_interface::transfer_checked(cpi_context, amount, decimals)?;
+        Ok(())
+    }
 }
 
 //the real transfer function
@@ -70,8 +121,8 @@ pub struct P2PTransfer<'info> {
     pub taker: Signer<'info>,
 
     //token mint
-    pub input_token_mint: InterfaceAccount<'info, Mint>,
-    pub output_token_mint: InterfaceAccount<'info, Mint>,
+    pub input_token_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub output_token_mint: Box<InterfaceAccount<'info, Mint>>,
 
     //token_program
     pub token_program: Interface<'info, TokenInterface>,
@@ -79,27 +130,27 @@ pub struct P2PTransfer<'info> {
 
     //escrow state account
     #[account(mut,  seeds = [b"escrow_state_account", output_token_mint.key().as_ref()], bump)]
-    pub escrow_state_account: Account<'info, EscrowStateShape>,
+    pub escrow_state_account: Box<Account<'info, EscrowStateShape>>,
 
     //maker input account
     #[account(mut, token::mint = input_token_mint, token::authority = maker)]
-    pub maker_input_account: InterfaceAccount<'info, TokenAccount>,
+    pub maker_input_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     //maker output account
     #[account(mut, token::mint = output_token_mint, token::authority = maker)]
-    pub maker_output_account: InterfaceAccount<'info, TokenAccount>,
+    pub maker_output_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     //taker input account
     #[account(mut, token::mint = input_token_mint, token::authority = taker)]
-    pub taker_input_account: InterfaceAccount<'info, TokenAccount>,
+    pub taker_input_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     //taker output account
     #[account(mut, token::mint = output_token_mint, token::authority = taker)]
-    pub taker_output_account: InterfaceAccount<'info, TokenAccount>,
+    pub taker_output_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     //vault token account
     #[account(mut , token::mint= output_token_mint, token::authority = escrow_state_account)]
-    pub vault_account: InterfaceAccount<'info, TokenAccount>,
+    pub vault_account: Box<InterfaceAccount<'info, TokenAccount>>,
 }
 
 #[error_code]
@@ -125,7 +176,7 @@ impl<'info> P2PTransfer<'info> {
 
     fn checks(&self, amount: u64) -> Result<()> {
         //check if the taker have the account
-        if self.taker_output_account.amount < amount {
+        if self.taker_input_account.amount < amount {
             return err!(P2pError::InsufficientAmount);
         }
         Ok(())
@@ -133,7 +184,7 @@ impl<'info> P2PTransfer<'info> {
 
     fn transfer_to_taker(&self, amount: u64) -> Result<()> {
         //transfer token from user account
-        let decimals = self.input_token_mint.decimals;
+        let decimals = self.output_token_mint.decimals;
         let cpi_accounts = TransferChecked {
             mint: self.output_token_mint.to_account_info(),
             from: self.vault_account.to_account_info(),
@@ -143,7 +194,7 @@ impl<'info> P2PTransfer<'info> {
 
         let cpi_program = self.token_program.to_account_info();
 
-        let output_mint = self.input_token_mint.key();
+        let output_mint = self.output_token_mint.key();
 
         let seeds = [
             b"escrow_state_account",
@@ -164,7 +215,7 @@ impl<'info> P2PTransfer<'info> {
             mint: self.input_token_mint.to_account_info(),
             from: self.taker_input_account.to_account_info(),
             to: self.maker_output_account.to_account_info(),
-            authority: self.taker_input_account.to_account_info(),
+            authority: self.taker.to_account_info(),
         };
 
         let cpi_program = self.token_program.to_account_info();
