@@ -69,14 +69,13 @@ export function HeroSection() {
                 <div className="absolute inset-0 border border-gradient-to-r from-primary/40 via-accent/40 to-primary/30" />
               </div>
 
-              {/* Image Content Area - Empty placeholder */}
-              <div className="relative z-10 w-full h-full flex items-center justify-center">
-                <div className="text-center p-8 lg:p-12 flex flex-col items-center justify-center h-full">
-                  {/* Empty space for user's image */}
-                  <img
-                    src={"../public/Gemini_Generated_Image_gwkbfygwkbfygwkb.png"}
-                  />
-                </div>
+              {/* Image Content Area */}
+              <div className="relative z-10 w-full h-full">
+                <img
+                  src="/Gemini_Generated_Image_gwkbfygwkbfygwkb.png"
+                  alt="Gemini Generated Image"
+                  className="w-full h-full object-cover"
+                />
               </div>
             </div>
           </div>
