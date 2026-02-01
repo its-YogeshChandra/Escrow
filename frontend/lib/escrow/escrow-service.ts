@@ -1,4 +1,4 @@
-import { Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { Program, AnchorProvider, BN, Idl } from '@coral-xyz/anchor';
 import {
     TOKEN_PROGRAM_ID,
@@ -29,56 +29,88 @@ export class EscrowService {
 
     // Initialize the program with a provider (requires wallet)
     initializeProgram(provider: AnchorProvider) {
+        // For Anchor 0.30+, we need to pass the IDL directly
+        // The new format is auto-detected
         this.program = new Program(IDL as unknown as Idl, provider);
+
+        // Debug: log available methods
+        if (this.program && this.program.methods) {
+            console.log('Available program methods:', Object.keys(this.program.methods));
+        }
     }
 
     // Fetch all escrow accounts (sellers listing SOL)
     async fetchAllEscrows(): Promise<Seller[]> {
         try {
+            console.log('Fetching escrow accounts from program:', ESCROW_PROGRAM_ID.toString());
+
+            // EscrowStateShape account size: 8 (discriminator) + 32 (maker) + 32 (token_mint) + 32 (vault_address) + 8 (token_amount) + 1 (bump) = 113 bytes
+            const ESCROW_ACCOUNT_SIZE = 113;
+
             const escrowAccounts = await this.connection.getProgramAccounts(ESCROW_PROGRAM_ID, {
                 filters: [
                     {
-                        memcmp: {
-                            offset: 0,
-                            bytes: '4VzCgfqN', // EscrowStateShape discriminator in base58
-                        },
+                        dataSize: ESCROW_ACCOUNT_SIZE,
                     },
                 ],
             });
+
+            console.log(`Found ${escrowAccounts.length} escrow accounts`);
 
             const sellers: Seller[] = [];
 
             for (const account of escrowAccounts) {
                 try {
+                    console.log('Parsing escrow account:', account.pubkey.toString());
                     const escrowState = this.parseEscrowState(account.account.data);
+                    console.log('Escrow state:', {
+                        maker: escrowState.maker.toString(),
+                        tokenMint: escrowState.tokenMint.toString(),
+                        vaultAddress: escrowState.vaultAddress.toString(),
+                        tokenAmount: escrowState.tokenAmount.toString(),
+                    });
+
+                    // Only show WSOL escrows (SOL listings)
+                    if (!escrowState.tokenMint.equals(WSOL_MINT)) {
+                        console.log('Skipping non-WSOL escrow');
+                        continue;
+                    }
 
                     // Fetch vault balance
-                    const vaultBalance = await this.connection.getTokenAccountBalance(escrowState.vaultAddress);
-                    const availableAmount = Number(vaultBalance.value.uiAmount) || 0;
-
-                    if (availableAmount > 0) {
-                        sellers.push({
-                            id: account.pubkey.toString(),
-                            name: `Seller ${account.pubkey.toString().slice(0, 4)}...${account.pubkey.toString().slice(-4)}`,
-                            walletAddress: escrowState.maker.toString(),
-                            escrowAccount: account.pubkey.toString(),
-                            vaultAccount: escrowState.vaultAddress.toString(),
-                            available: availableAmount,
-                            currency: 'SOL',
-                            price: 1.0, // Default price, could be stored in extended state
-                            minAmount: 0.01,
-                            maxAmount: availableAmount,
-                            verified: true,
-                            paymentMethods: ['USDC'],
-                            rating: 4.8,
-                            completedTrades: 0,
-                        });
+                    let availableAmount = 0;
+                    try {
+                        const vaultBalance = await this.connection.getTokenAccountBalance(escrowState.vaultAddress);
+                        availableAmount = Number(vaultBalance.value.uiAmount) || 0;
+                        console.log('Vault balance:', availableAmount);
+                    } catch (e) {
+                        console.log('Could not fetch vault balance:', e);
+                        // Use the stored amount as fallback
+                        availableAmount = escrowState.tokenAmount.toNumber() / Math.pow(10, SOL_DECIMALS);
                     }
+
+                    // Show even if balance is 0 for debugging
+                    sellers.push({
+                        id: account.pubkey.toString(),
+                        name: `Seller ${escrowState.maker.toString().slice(0, 4)}...${escrowState.maker.toString().slice(-4)}`,
+                        walletAddress: escrowState.maker.toString(),
+                        escrowAccount: account.pubkey.toString(),
+                        vaultAccount: escrowState.vaultAddress.toString(),
+                        available: availableAmount,
+                        currency: 'SOL',
+                        price: 150.0, // Price in USDC per SOL (rough estimate)
+                        minAmount: 0.001,
+                        maxAmount: Math.max(availableAmount, 0.001),
+                        verified: true,
+                        paymentMethods: ['USDC'],
+                        rating: 4.8,
+                        completedTrades: 0,
+                    });
                 } catch (e) {
-                    console.error('Error parsing escrow account:', e);
+                    console.error('Error parsing escrow account:', account.pubkey.toString(), e);
                 }
             }
 
+            console.log(`Returning ${sellers.length} sellers`);
             return sellers;
         } catch (error) {
             console.error('Error fetching escrows:', error);
@@ -87,15 +119,18 @@ export class EscrowService {
     }
 
     // Parse escrow state from account data
-    private parseEscrowState(data: Buffer): EscrowState {
+    private parseEscrowState(data: Buffer | Uint8Array): EscrowState {
+        // Convert Uint8Array to Buffer if needed
+        const buffer = Buffer.from(data);
+
         // Skip 8-byte discriminator
         const offset = 8;
 
-        const maker = new PublicKey(data.slice(offset, offset + 32));
-        const tokenMint = new PublicKey(data.slice(offset + 32, offset + 64));
-        const vaultAddress = new PublicKey(data.slice(offset + 64, offset + 96));
-        const tokenAmount = new BN(data.slice(offset + 96, offset + 104), 'le');
-        const bump = data[offset + 104];
+        const maker = new PublicKey(buffer.slice(offset, offset + 32));
+        const tokenMint = new PublicKey(buffer.slice(offset + 32, offset + 64));
+        const vaultAddress = new PublicKey(buffer.slice(offset + 64, offset + 96));
+        const tokenAmount = new BN(buffer.slice(offset + 96, offset + 104), 'le');
+        const bump = buffer[offset + 104];
 
         return {
             maker,
@@ -104,6 +139,58 @@ export class EscrowService {
             tokenAmount,
             bump,
         };
+    }
+
+    // Check if user already has an escrow listing
+    async hasExistingListing(makerWallet: PublicKey): Promise<boolean> {
+        try {
+            const [escrowStateAccount] = deriveEscrowStatePDA(makerWallet, WSOL_MINT);
+            const accountInfo = await this.connection.getAccountInfo(escrowStateAccount);
+            return accountInfo !== null;
+        } catch {
+            return false;
+        }
+    }
+
+    // Get user's existing escrow details
+    async getExistingListing(makerWallet: PublicKey): Promise<Seller | null> {
+        try {
+            const [escrowStateAccount] = deriveEscrowStatePDA(makerWallet, WSOL_MINT);
+            const accountInfo = await this.connection.getAccountInfo(escrowStateAccount);
+
+            if (!accountInfo) return null;
+
+            const escrowState = this.parseEscrowState(accountInfo.data);
+
+            // Get vault balance
+            let availableAmount = 0;
+            try {
+                const vaultBalance = await this.connection.getTokenAccountBalance(escrowState.vaultAddress);
+                availableAmount = Number(vaultBalance.value.uiAmount) || 0;
+            } catch {
+                availableAmount = escrowState.tokenAmount.toNumber() / Math.pow(10, SOL_DECIMALS);
+            }
+
+            return {
+                id: escrowStateAccount.toString(),
+                name: `Your Listing`,
+                walletAddress: escrowState.maker.toString(),
+                escrowAccount: escrowStateAccount.toString(),
+                vaultAccount: escrowState.vaultAddress.toString(),
+                available: availableAmount,
+                currency: 'SOL',
+                price: 150.0,
+                minAmount: 0.001,
+                maxAmount: availableAmount,
+                verified: true,
+                paymentMethods: ['USDC'],
+                rating: 5.0,
+                completedTrades: 0,
+            };
+        } catch (e) {
+            console.error('Error getting existing listing:', e);
+            return null;
+        }
     }
 
     // Create a new escrow listing (seller deposits SOL)
@@ -117,6 +204,15 @@ export class EscrowService {
         }
 
         try {
+            // Check if escrow already exists
+            const hasListing = await this.hasExistingListing(makerWallet);
+            if (hasListing) {
+                return {
+                    success: false,
+                    error: 'You already have an active listing. Each wallet can only have one SOL listing at a time.'
+                };
+            }
+
             const amountLamports = new BN(amount * Math.pow(10, SOL_DECIMALS));
 
             // Derive PDAs
@@ -234,8 +330,23 @@ export class EscrowService {
             // This is a limitation of the current contract design
             // For a real P2P marketplace, you'd typically use a different pattern
 
-            const swapIx = await this.program.methods
-                .p2pswap(inputAmountBN, outputAmountBN)
+            // Log available methods for debugging
+            console.log('Program methods available:', Object.keys(this.program.methods || {}));
+
+            // Try to find the correct method name (could be p2pswap or p2Pswap depending on conversion)
+            const methods = this.program.methods as Record<string, unknown>;
+            let swapMethod = methods['p2pswap'] || methods['p2Pswap'] || methods['P2pswap'];
+
+            if (!swapMethod) {
+                // List available methods for debugging
+                const availableMethods = Object.keys(methods).join(', ');
+                return {
+                    success: false,
+                    error: `Swap method not found. Available methods: ${availableMethods}`
+                };
+            }
+
+            const swapIx = await (swapMethod as Function).call(this.program.methods, inputAmountBN, outputAmountBN)
                 .accounts({
                     maker: makerPubkey,
                     taker: takerWallet,

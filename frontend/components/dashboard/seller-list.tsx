@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Star, Shield, ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,34 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { useEscrow } from "@/hooks/use-escrow"
 import { Seller } from "@/lib/escrow/types"
 
-// Fallback mock sellers for when no on-chain data exists
-const mockSellers: Seller[] = [
-    {
-        id: "mock-1",
-        name: "Demo Seller",
-        walletAddress: "Demo...Wallet",
-        escrowAccount: "Demo...Escrow",
-        vaultAccount: "Demo...Vault",
-        available: 10.5,
-        currency: "SOL",
-        price: 150.00, // Price in USDC per SOL
-        minAmount: 0.1,
-        maxAmount: 10.5,
-        verified: true,
-        paymentMethods: ["USDC"],
-        rating: 4.8,
-        completedTrades: 42,
-    },
-]
+// No mock sellers - only show real on-chain data
+// When no escrows exist, show empty state
 
 export function SellerList() {
-    const { sellers: onChainSellers, loading, error, isConnected, executeSwap, fetchSellers, usdcBalance } = useEscrow()
+    const { sellers, loading, error, isConnected, executeSwap, fetchSellers, usdcBalance } = useEscrow()
     const [amounts, setAmounts] = useState<Record<string, string>>({})
     const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
     const [processingSwap, setProcessingSwap] = useState<string | null>(null)
-
-    // Use on-chain sellers if available, otherwise show mock data
-    const sellers = onChainSellers.length > 0 ? onChainSellers : mockSellers
 
     const handleAmountChange = (sellerId: string, value: string) => {
         setAmounts((prev) => ({ ...prev, [sellerId]: value }))
@@ -111,7 +91,7 @@ export function SellerList() {
                             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                         </Button>
                         <Badge variant="secondary" className="bg-primary/10 text-primary border-0">
-                            {sellers.length} {onChainSellers.length > 0 ? 'on-chain' : 'demo'}
+                            {sellers.length} listing{sellers.length !== 1 ? 's' : ''}
                         </Badge>
                     </div>
                 </div>
@@ -128,6 +108,13 @@ export function SellerList() {
                 {loading ? (
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : sellers.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                        <p className="text-muted-foreground mb-2">No sellers available</p>
+                        <p className="text-sm text-muted-foreground">
+                            Be the first to list your SOL for sale using Quick Actions!
+                        </p>
                     </div>
                 ) : (
                     <>

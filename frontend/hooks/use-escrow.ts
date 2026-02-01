@@ -65,7 +65,26 @@ export function useEscrow() {
         setError(null);
 
         try {
+            // Fetch all escrows from the program
             const escrows = await escrowService.fetchAllEscrows();
+            console.log('Fetched escrows from getProgramAccounts:', escrows.length);
+
+            // Also try to fetch the connected user's own listing directly
+            // This ensures their listing appears even if getProgramAccounts has issues
+            if (wallet.publicKey) {
+                const myListing = await escrowService.getExistingListing(wallet.publicKey);
+                console.log('User\'s own listing:', myListing);
+
+                if (myListing) {
+                    // Check if it's already in the list
+                    const alreadyExists = escrows.some(e => e.id === myListing.id);
+                    if (!alreadyExists) {
+                        escrows.unshift(myListing); // Add at the beginning
+                    }
+                }
+            }
+
+            console.log('Total sellers:', escrows.length);
             setSellers(escrows);
         } catch (e) {
             setError((e as Error).message);
@@ -73,7 +92,7 @@ export function useEscrow() {
         } finally {
             setLoading(false);
         }
-    }, [escrowService]);
+    }, [escrowService, wallet.publicKey]);
 
     // Fetch sellers on mount and when service is ready
     useEffect(() => {

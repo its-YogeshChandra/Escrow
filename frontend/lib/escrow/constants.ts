@@ -3,8 +3,8 @@ import { PublicKey } from '@solana/web3.js';
 // Program ID for the escrow contract
 export const ESCROW_PROGRAM_ID = new PublicKey('8n6tXMhBaJ67C6nmWZ71e5voHnygzxLEHNenxVrrnbnm');
 
-// Devnet USDC mint address (devnet USDC)
-export const USDC_MINT = new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
+// Custom USDC mint address (user's devnet USDC)
+export const USDC_MINT = new PublicKey('Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
 
 // Wrapped SOL mint address (same on all networks)
 export const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
