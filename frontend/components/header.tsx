@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
@@ -50,9 +51,11 @@ export function Header() {
               <Moon className="h-5 w-5" />
             )}
           </Button>
-          <Button className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground rounded-full px-6 font-semibold shadow-lg hover:shadow-xl transition-all">
-            Dashboard
-          </Button>
+          <Link href="/dashboard">
+            <Button className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground rounded-full px-6 font-semibold shadow-lg hover:shadow-xl transition-all">
+              Dashboard
+            </Button>
+          </Link>
         </div>
       </div>
     </header>
