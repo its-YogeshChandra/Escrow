@@ -3,11 +3,14 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from 'next-themes'
+import { WalletContextProvider } from '@/components/wallet-provider'
 import './globals.css'
 
+// The fonts
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
+// The main export function
 export const metadata: Metadata = {
   title: 'P2P Application',
   description: 'Next generation peer-to-peer application',
@@ -40,10 +43,13 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-          {children}
+          <WalletContextProvider>
+            {children}
+          </WalletContextProvider>
         </ThemeProvider>
         <Analytics />
       </body>
     </html>
   )
 }
+

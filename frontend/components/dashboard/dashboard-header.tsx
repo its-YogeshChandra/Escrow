@@ -5,6 +5,7 @@ import { Search, Wallet, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
 
 export function DashboardHeader() {
     return (
@@ -34,10 +35,9 @@ export function DashboardHeader() {
                     </Button>
                 </Link>
                 <ThemeToggle />
-                <Button className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground font-semibold shadow-lg hover:shadow-xl transition-all">
-                    Connect Wallet
-                </Button>
+                <WalletMultiButton />
             </div>
         </header>
     )
 }
+
