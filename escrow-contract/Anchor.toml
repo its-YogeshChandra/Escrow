@@ -8,12 +8,16 @@ skip-lint = false
 [programs.localnet]
 escrow_contract = "8n6tXMhBaJ67C6nmWZ71e5voHnygzxLEHNenxVrrnbnm"
 
+[programs.devnet]
+escrow_contract = "8n6tXMhBaJ67C6nmWZ71e5voHnygzxLEHNenxVrrnbnm"
+
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
+
